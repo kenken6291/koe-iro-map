@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>こえいろマップ｜話し方で見つかる、波長の合う人</title>
+  <meta name="description" content="お題を音読するだけで、あなたの話し方をAIが診断。テンション・方言・テンポのマップから、波長の合う人を見つけてお話ししよう。">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗾</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="config.js"></script>
+</head>
+<body>
+  <video id="bg-video" class="bg-video" autoplay muted loop playsinline aria-hidden="true"></video>
+  <div class="bg-veil" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="logo" href="#" data-go="map">こえいろ<span>マップ</span></a>
+    <div class="header-right">
+      <nav id="main-nav" class="main-nav" hidden>
+        <button data-go="map">マップ</button>
+        <button data-go="inbox">リアクション<span id="unread-badge" class="unread" hidden></span></button>
+        <button data-go="mypage">マイページ</button>
+      </nav>
+      <button id="btn-help" class="help-link" type="button">使い方</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- ===== 認証 ===== -->
+    <section id="screen-auth" class="screen" hidden>
+      <div class="auth-hero">
+        <h1 class="hero-title">声で、<br>波長の合う人を<br>さがそう。</h1>
+        <p class="hero-lead">お題の文章を音読するだけ。AIがあなたのテンション・方言・テンポを聞き分けて、マップにあなたの居場所をつくります。</p>
+        <button class="link-btn hero-help" type="button" data-open-help>はじめての方は、使い方をご覧ください</button>
+      </div>
+      <div class="panel auth-panel">
+        <div class="tabs" role="tablist">
+          <button role="tab" class="tab is-active" data-auth-tab="login" aria-selected="true">ログイン</button>
+          <button role="tab" class="tab" data-auth-tab="register" aria-selected="false">新規登録</button>
+        </div>
+
+        <form id="form-login" class="auth-form" novalidate>
+          <label>メールアドレス<input type="email" name="email" autocomplete="email" required></label>
+          <label>パスワード
+            <span class="pw-wrap"><input type="password" name="password" autocomplete="current-password" required>
+              <button type="button" class="pw-toggle" aria-label="パスワードを表示"></button></span>
+          </label>
+          <button class="btn btn-primary" type="submit">ログイン</button>
+          <button class="link-btn" type="button" data-auth-tab="forgot">パスワードをお忘れの方</button>
+        </form>
+
+        <form id="form-register" class="auth-form" hidden novalidate>
+          <label>ニックネーム（マップに表示されます）<input type="text" name="nickname" maxlength="20" required></label>
+          <label>メールアドレス<input type="email" name="email" autocomplete="email" required></label>
+          <p class="note">登録すると、仮パスワードがメールで届きます。</p>
+          <button class="btn btn-primary" type="submit">仮パスワードを受け取る</button>
+        </form>
+
+        <form id="form-forgot" class="auth-form" hidden novalidate>
+          <p class="note">登録したメールアドレスに、新しい仮パスワードを送ります。</p>
+          <label>メールアドレス<input type="email" name="email" autocomplete="email" required></label>
+          <button class="btn btn-primary" type="submit">仮パスワードを再発行</button>
+          <button class="link-btn" type="button" data-auth-tab="login">ログインに戻る</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== 音声診断 ===== -->
+    <section id="screen-diagnose" class="screen" hidden>
+      <div class="diag-step" data-step="prompt">
+        <h2 class="screen-title">この文章を、いつもの話し方で読んでください</h2>
+        <p class="sub">言い回しを方言に変えてもOK。かしこまらずに、ふだんの調子でどうぞ。</p>
+        <blockquote id="prompt-text" class="prompt-card">読み込み中…</blockquote>
+        <div class="row">
+          <button id="btn-listen" class="btn btn-ghost" type="button">🔊 お手本を聞く</button>
+          <button id="btn-new-prompt" class="btn btn-ghost" type="button">別の文章にする</button>
+        </div>
+        <div class="rec-box">
+          <canvas id="wave-reading" class="wave" aria-hidden="true"></canvas>
+          <p id="rec-timer" class="rec-timer">0.0 秒 ／ 最大 30 秒</p>
+          <div class="row center">
+            <button id="btn-rec" class="btn btn-rec" type="button"><span class="rec-dot"></span>録音する</button>
+            <button id="btn-stop" class="btn btn-rec is-stop" type="button" hidden>止める</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="diag-step" data-step="review" hidden>
+        <h2 class="screen-title">録音できました</h2>
+        <p class="sub">聞き返して、よければ診断に進みましょう。</p>
+        <audio id="review-audio" controls></audio>
+        <div class="row">
+          <button id="btn-retake" class="btn btn-ghost" type="button">録り直す</button>
+          <button id="btn-analyze" class="btn btn-primary" type="button">この声で診断する</button>
+        </div>
+      </div>
+
+      <div class="diag-step" data-step="analyzing" hidden>
+        <div class="analyzing">
+          <div class="pulse-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <p id="analyzing-msg" class="analyzing-msg">あなたの声を聞いています…</p>
+        </div>
+      </div>
+
+      <div class="diag-step" data-step="result" hidden>
+        <p class="result-kicker">あなたの称号は</p>
+        <h2 id="result-badge" class="badge-title"></h2>
+        <p id="result-dialect" class="result-dialect"></p>
+        <div id="result-axes" class="axes"></div>
+        <p id="result-summary" class="result-summary"></p>
+        <ul id="result-tags" class="tags"></ul>
+
+        <div class="panel intro-panel">
+          <h3>ひとことボイスを公開する（任意）</h3>
+          <p class="sub">マップであなたを見つけた人が聞ける、10秒までの自己紹介です。音読の録音は公開されません。</p>
+          <canvas id="wave-intro" class="wave small" aria-hidden="true"></canvas>
+          <p id="intro-timer" class="rec-timer">0.0 秒 ／ 最大 10 秒</p>
+          <div class="row">
+            <button id="btn-intro-rec" class="btn btn-ghost" type="button"><span class="rec-dot"></span>ひとこと録音</button>
+            <button id="btn-intro-stop" class="btn btn-ghost" type="button" hidden>止める</button>
+            <button id="btn-intro-upload" class="btn btn-primary" type="button" hidden>この声を公開する</button>
+          </div>
+          <audio id="intro-audio" controls hidden></audio>
+        </div>
+        <button id="btn-to-map" class="btn btn-primary wide" type="button">マップで仲間をさがす</button>
+      </div>
+    </section>
+
+    <!-- ===== マップ ===== -->
+    <section id="screen-map" class="screen" hidden>
+      <div class="map-head">
+        <h2 class="screen-title">こえいろマップ</h2>
+        <div class="tabs" role="tablist" id="map-tabs"></div>
+        <div class="filters" role="group" aria-label="表示する人">
+          <button class="chip is-active" data-filter="all">みんな</button>
+          <button class="chip" data-filter="near">波長が合う人</button>
+          <button class="chip" data-filter="opposite">真逆の人</button>
+        </div>
+      </div>
+      <div class="map-layout">
+        <div class="map-wrap">
+          <svg id="quad-map" class="quad-map"></svg>
+          <div id="map-tip" class="map-tip" hidden></div>
+        </div>
+        <aside class="map-side">
+          <h3 id="side-title">マップの見かた</h3>
+          <div id="side-body" class="side-body">
+            <p class="sub">点をタップすると、その人の称号やひとことボイスが見られます。輪のついた点はボイスを公開している人です。</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ===== リアクション ===== -->
+    <section id="screen-inbox" class="screen" hidden>
+      <h2 class="screen-title">届いたリアクション</h2>
+      <div id="matches" class="matches"></div>
+      <ul id="inbox-list" class="inbox-list"></ul>
+    </section>
+
+    <!-- ===== 使い方 ===== -->
+    <section id="screen-help" class="screen" hidden>
+      <h2 class="screen-title">使い方</h2>
+      <p class="sub">お題の文章を読むだけで、あなたの話し方がマップに載ります。はじめての方は、上から順にどうぞ。</p>
+      <ol class="howto">
+        <li>
+          <h3>会員登録</h3>
+          <p>ログイン画面の「新規登録」で、ニックネームとメールアドレスを入力します。仮パスワードがメールで届きます。届かないときは、迷惑メールフォルダも確認してください。</p>
+        </li>
+        <li>
+          <h3>はじめてのログイン</h3>
+          <p>メールの仮パスワードでログインすると、パスワード変更の画面が開きます。8文字以上で、英字と数字をどちらも入れてください。目のマークを押すと、入力中の文字を確かめられます。</p>
+        </li>
+        <li>
+          <h3>音声診断</h3>
+          <p>画面の文章を、いつもの話し方で読みます。「お手本を聞く」で読み上げを聞けます。読みにくい文章は「別の文章にする」で変えられます。「録音する」を押して読み、読み終えたら「止める」を押します。録音は30秒までです。</p>
+        </li>
+        <li>
+          <h3>結果と称号</h3>
+          <p>診断が終わると、ことばの地元へ飛ぶ映像のあとに称号が出ます。テンション・方言・テンポの3本のバーで、あなたの話し方の位置がわかります。</p>
+        </li>
+        <li>
+          <h3>ひとことボイス（任意）</h3>
+          <p>10秒までの自己紹介を録って公開すると、マップであなたを見つけた人が聞けます。公開しなくても使えます。あとからマイページで削除できます。</p>
+        </li>
+        <li>
+          <h3>マップで探す</h3>
+          <p>上のタブで、マップの組み合わせを切り替えます。山吹色の点があなたです。「波長が合う人」は話し方が似た人、「真逆の人」は正反対の人を光らせます。点をタップすると、その人のカードが開きます。</p>
+        </li>
+        <li>
+          <h3>リアクションを送る</h3>
+          <p>カードの「お話ししたい」「いい声！」などのボタンで気持ちを送れます。ひとことメッセージも添えられます。同じ相手に同じリアクションは1日1回です。おたがいに「お話ししたい」を送ると、リアクション画面に表示されます。</p>
+        </li>
+      </ol>
+
+      <h3 class="faq-title">うまくいかないとき</h3>
+      <dl class="faq">
+        <dt>録音ボタンを押しても録音できない</dt>
+        <dd>ブラウザのマイク許可を「許可」にしてください。iPhone は「設定」→「Safari」→「マイク」でも確認できます。</dd>
+        <dt>「聞き取れませんでした」と出る</dt>
+        <dd>静かな場所で、スマートフォンを口元から20〜30cmほどに近づけて録り直してください。</dd>
+        <dt>診断結果を変えたい</dt>
+        <dd>マイページの「もう一度診断する」から、何度でもやり直せます。新しい結果に置き換わります。</dd>
+        <dt>パスワードを忘れた</dt>
+        <dd>ログイン画面の「パスワードをお忘れの方」から、仮パスワードを再発行できます。</dd>
+        <dt>録音した声はどこまで公開される？</dt>
+        <dd>音読の録音は診断だけに使い、ほかの人には公開しません。ほかの会員が聞けるのは、あなたが公開したひとことボイスだけです。</dd>
+      </dl>
+      <button id="btn-help-back" class="btn btn-primary" type="button">もどる</button>
+    </section>
+
+    <!-- ===== マイページ ===== -->
+    <section id="screen-mypage" class="screen" hidden>
+      <h2 class="screen-title">マイページ</h2>
+      <div class="panel">
+        <div id="my-summary"></div>
+        <form id="form-profile" class="auth-form" novalidate>
+          <label>ニックネーム<input type="text" name="nickname" maxlength="20" required></label>
+          <label>ひとこと紹介（140文字まで）<textarea name="bio" maxlength="140" rows="3"></textarea></label>
+          <button class="btn btn-primary" type="submit">プロフィールを保存</button>
+        </form>
+      </div>
+      <div class="row">
+        <button id="btn-rediagnose" class="btn btn-ghost" type="button">もう一度診断する</button>
+        <button id="btn-delete-intro" class="btn btn-ghost" type="button">ひとことボイスを削除</button>
+        <button id="btn-change-pass" class="btn btn-ghost" type="button">パスワードを変更</button>
+        <button id="btn-logout" class="btn btn-ghost" type="button">ログアウト</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span id="app-version"></span>
+  </footer>
+
+  <!-- パスワード変更（初回は閉じられない） -->
+  <div id="modal-pass" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pass-title">
+    <div class="modal-box">
+      <h2 id="pass-title">パスワードを変更</h2>
+      <p id="pass-note" class="note">仮パスワードでログインしました。続けるには、ご自身のパスワードを設定してください。</p>
+      <form id="form-pass" class="auth-form" novalidate>
+        <label>現在のパスワード（仮パスワード）
+          <span class="pw-wrap"><input type="password" name="currentPassword" autocomplete="current-password" required>
+            <button type="button" class="pw-toggle" aria-label="パスワードを表示"></button></span>
+        </label>
+        <label>新しいパスワード（8文字以上・英字と数字を含む）
+          <span class="pw-wrap"><input type="password" name="newPassword" autocomplete="new-password" required>
+            <button type="button" class="pw-toggle" aria-label="パスワードを表示"></button></span>
+        </label>
+        <label>新しいパスワード（確認）
+          <span class="pw-wrap"><input type="password" name="confirm" autocomplete="new-password" required>
+            <button type="button" class="pw-toggle" aria-label="パスワードを表示"></button></span>
+        </label>
+        <div class="row">
+          <button id="btn-pass-cancel" class="btn btn-ghost" type="button">閉じる</button>
+          <button class="btn btn-primary" type="submit">パスワードを変更</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 詳細カード -->
+  <div id="modal-detail" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="detail-badge">
+    <div class="modal-box detail-box">
+      <button class="close-x" data-close aria-label="閉じる">×</button>
+      <div id="detail-body"></div>
+    </div>
+  </div>
+
+  <!-- 地域フライト演出 -->
+  <div id="flight" class="flight" hidden aria-hidden="true">
+    <video id="flight-video" muted playsinline></video>
+    <div class="flight-fallback"><span id="flight-region"></span></div>
+    <button id="flight-skip" class="flight-skip" type="button">スキップ</button>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

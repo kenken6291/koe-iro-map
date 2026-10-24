@@ -1,4 +1,4 @@
-# こえいろマップ～マッチングサイト（koe-iro-map） v1.1.1-beta
+# こえいろマップ～マッチングサイト（koe-iro-map） v1.2.0-beta
 
 お題文を音読すると、Gemini が「テンション／方言の濃さ／テンポ」の3軸で話し方を診断し、4象限マップ上で波長の合う人・真逆の人を探して交流できる Web アプリです。
 
@@ -61,7 +61,7 @@ koe-iro-map/
 | introFileId | ひとことボイス（会員だけが GAS 経由で再生） |
 | promptId / diagnosedAt / updatedAt | |
 
-**Reactions**：reactionId / fromUserId / toUserId / type（talk・voice・dialect・smile）/ message / createdAt / readAt
+**Reactions**：reactionId / fromUserId / toUserId / type（talk・voice・dialect・smile）/ message / createdAt / readAt / voiceFileId（ボイスメッセージ。Drive `koe-iro-map/voice_messages`、送った本人と受け取った相手だけが GAS 経由で再生可）
 同じ相手に同じリアクションは24時間に1回。双方が「お話ししたい」を送るとマッチ。
 
 **Contacts**（連絡先）：userId / links（JSON配列 `{type, value, note}`、8件まで）/ updatedAt
@@ -72,6 +72,10 @@ koe-iro-map/
 ### 既存環境を v1.1.0 に上げるとき
 
 Code.gs を差し替えたあと、もう一度 `setup()` を実行してください。Users に2列が追加され、Contacts・Approvals シートが作られます（既存データは消えません）。
+
+### 既存環境を v1.2.0 に上げるとき
+
+Code.gs を差し替えたあと `setup()` をもう一度実行してください。Reactions に voiceFileId 列が追加され、Drive に `voice_messages` フォルダが作られます。
 
 ### 利用上の注意を変えるとき
 
@@ -132,7 +136,8 @@ index.html の「連絡先を交換する前に」の文面を直したら、Cod
 | analyzeVoice | 音読WAVをDrive保存→Gemini解析→Profiles更新 |
 | uploadIntro / deleteIntro / getVoice | ひとことボイスの公開・削除・再生 |
 | updateProfile / listProfiles | プロフィール更新／マップ用一覧 |
-| sendReaction / getInbox | リアクション送信／受信一覧とマッチ |
+| sendReaction / getInbox | リアクション送信（ボイスメッセージ添付可）／受信一覧とマッチ |
+| getVoiceMessage / deleteVoiceMessage | ボイスメッセージの再生／削除 |
 | agreeTerms | 利用上の注意・免責事項への同意を記録 |
 | getMyContacts / saveContacts | 自分の連絡先の取得・保存 |
 | getConnections | マッチ一覧と承認状況（相互承認済みの相手だけ連絡先つき） |

@@ -247,6 +247,13 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 0
 .detail-badge { font-family: var(--display); font-weight: 400; font-size: clamp(1.5rem, 5vw, 2rem); line-height: 1.25; margin: 6px 0 2px; padding-right: 32px; }
 .detail-name { font-weight: 700; margin: 0 0 12px; }
 .detail-close { font-weight: 700; margin: 12px 0; }
+.send-box { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
+.send-title { margin: 0 0 8px; font-size: 1rem; }
+.send-box .react-msg { margin-top: 0; }
+.vmsg { margin: 12px 0 4px; }
+.vmsg .row { margin: 8px 0; }
+#d-audio { width: 100%; }
+.vrow { margin: 8px 0 4px; align-items: center; }
 .reactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .react-btn { border: 1.5px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 8px 14px; cursor: pointer; font-weight: 700; }
 .react-btn:disabled { opacity: .5; }

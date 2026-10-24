@@ -593,10 +593,22 @@ function openDetail(u) {
       ${hasVideo ? '<button class="btn btn-ghost" id="d-fly" type="button">ことばの地元へ飛ぶ</button>' : ''}
     </div>
     ${u.isMe ? '' : `
-    <div>
+    <div class="send-box">
+      <h3 class="send-title">${esc(u.nickname)} さんに気持ちを送る</h3>
+      <input class="react-msg" id="d-msg" maxlength="100" placeholder="ひとことメッセージ（任意・100文字まで）">
+      <div class="vmsg">
+        <p class="note">声を添えることもできます（${CFG.VOICE_MSG_MAX_SEC}秒まで）。録音してから、下のボタンを押してください。</p>
+        <canvas id="d-wave" class="wave small" aria-hidden="true" hidden></canvas>
+        <p id="d-timer" class="rec-timer" hidden></p>
+        <div class="row">
+          <button id="d-rec" class="btn btn-ghost" type="button"><span class="rec-dot"></span>声を録音</button>
+          <button id="d-stop" class="btn btn-ghost" type="button" hidden>止める</button>
+          <button id="d-discard" class="btn btn-ghost" type="button" hidden>声を取り消す</button>
+        </div>
+        <audio id="d-audio" controls hidden></audio>
+      </div>
       <div class="reactions">${Object.entries(REACTIONS).map(([k, r]) =>
         `<button class="react-btn" data-react="${k}" type="button">${r.label}</button>`).join('')}</div>
-      <input class="react-msg" id="d-msg" maxlength="100" placeholder="ひとことメッセージ（任意・100文字まで）">
     </div>`}`;
 
   const voiceBtn = $('#d-voice', body);
@@ -607,15 +619,94 @@ function openDetail(u) {
   const fly = $('#d-fly', body);
   if (fly) fly.addEventListener('click', () => playFlight(u.regionKey));
 
-  $$('[data-react]', body).forEach(b => b.addEventListener('click', () => busy(b, async () => {
-    const r = await call('sendReaction', { toUserId: u.userId, type: b.dataset.react, message: $('#d-msg', body).value });
-    toast(r.message);
-    $('#d-msg', body).value = '';
-    u.reactionCount = (u.reactionCount || 0) + 1;
-  })));
+  if (!u.isMe) setupVoiceMessage(body);
+
+  $$('[data-react]', body).forEach(b => b.addEventListener('click', () => {
+    if (detailRec && detailRec.recording) return toast('録音を止めてから送ってください。', true);
+    busy(b, async () => {
+      const r = await call('sendReaction', {
+        toUserId: u.userId, type: b.dataset.react, message: $('#d-msg', body).value,
+        audio: detailWav ? bytesToBase64(detailWav) : ''
+      });
+      toast(r.message);
+      $('#d-msg', body).value = '';
+      clearVoiceMessage(body);
+      u.reactionCount = (u.reactionCount || 0) + 1;
+    });
+  }));
 
   $('#modal-detail').hidden = false;
   $('.close-x', $('#modal-detail')).focus();
+}
+
+/* ---------- ボイスメッセージの録音 ---------- */
+let detailRec = null;
+let detailWav = null;
+
+function setupVoiceMessage(body) {
+  detailWav = null;
+  const max = CFG.VOICE_MSG_MAX_SEC || 20;
+  const timer = $('#d-timer', body);
+  detailRec = new VoiceRecorder($('#d-wave', body), {
+    maxSec: max,
+    onTick: s => { timer.textContent = `${s.toFixed(1)} 秒 ／ 最大 ${max} 秒`; },
+    onAutoStop: () => stopVoiceMessage(body)
+  });
+  $('#d-rec', body).addEventListener('click', async () => {
+    stopPlayback();
+    try {
+      $('#d-wave', body).hidden = false;
+      timer.hidden = false;
+      await detailRec.start();
+      $('#d-rec', body).hidden = true;
+      $('#d-stop', body).hidden = false;
+      $('#d-discard', body).hidden = true;
+      $('#d-audio', body).hidden = true;
+    } catch (e) {
+      $('#d-wave', body).hidden = true;
+      timer.hidden = true;
+      toast(e.message, true);
+    }
+  });
+  $('#d-stop', body).addEventListener('click', () => stopVoiceMessage(body));
+  $('#d-discard', body).addEventListener('click', () => clearVoiceMessage(body));
+}
+
+async function stopVoiceMessage(body) {
+  const blob = await detailRec.stop();
+  $('#d-stop', body).hidden = true;
+  $('#d-wave', body).hidden = true;
+  if (!blob || blob.size < 500) { clearVoiceMessage(body); return; }
+  try {
+    const { wav, duration } = await blobToWav16k(blob);
+    if (duration < 1) { clearVoiceMessage(body); return toast('1秒以上話してください。', true); }
+    detailWav = wav;
+    const a = $('#d-audio', body);
+    a.src = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+    a.hidden = false;
+    $('#d-rec', body).hidden = false;
+    $('#d-rec', body).innerHTML = '<span class="rec-dot"></span>録り直す';
+    $('#d-discard', body).hidden = false;
+    $('#d-timer', body).textContent = '声を添えました。送りたいボタンを押してください。';
+  } catch (e) {
+    clearVoiceMessage(body);
+    toast('録音データを処理できませんでした。', true);
+  }
+}
+
+function clearVoiceMessage(body) {
+  detailWav = null;
+  if (detailRec && detailRec.recording) detailRec.cancel();
+  const q = s => $(s, body);
+  if (!q('#d-rec')) return;
+  q('#d-rec').hidden = false;
+  q('#d-rec').innerHTML = '<span class="rec-dot"></span>声を録音';
+  q('#d-stop').hidden = true;
+  q('#d-discard').hidden = true;
+  q('#d-wave').hidden = true;
+  q('#d-timer').hidden = true;
+  q('#d-audio').hidden = true;
+  q('#d-audio').removeAttribute('src');
 }
 
 function setupModals() {
@@ -629,6 +720,9 @@ function setupModals() {
 
 function closeDetail() {
   stopPlayback();
+  if (detailRec && detailRec.recording) detailRec.cancel();
+  detailRec = null;
+  detailWav = null;
   $('#modal-detail').hidden = true;
 }
 
@@ -658,9 +752,26 @@ async function loadInbox() {
         から「${esc((REACTIONS[x.type] || {}).short || x.type)}」
         <div class="when">${new Date(x.createdAt).toLocaleString('ja-JP')}</div>
         ${x.message ? `<p class="msg">${esc(x.message)}</p>` : ''}
-        <button class="link-btn" data-uid="${esc(x.fromUserId)}" type="button">この人をマップで見る</button>
+        ${x.hasVoice ? '<p class="note">🎙 ボイスメッセージつき</p>' : ''}
+        ${x.hasVoice ? `<div class="row vrow">
+          <button class="btn btn-primary" data-play="${esc(x.reactionId)}" type="button">▶ ボイスを聞く</button>
+          <button class="link-btn" data-delvoice="${esc(x.reactionId)}" type="button">ボイスを削除</button>
+        </div>` : ''}
+        <button class="link-btn" data-uid="${esc(x.fromUserId)}" type="button">この人に返事をする</button>
       </li>`).join('');
     $$('#inbox-list [data-uid]').forEach(b => b.addEventListener('click', () => openUser(b.dataset.uid)));
+    $$('#inbox-list [data-play]').forEach(b => b.addEventListener('click', () => busy(b, async () => {
+      const v = await call('getVoiceMessage', { reactionId: b.dataset.play });
+      playUrl(base64ToUrl(v.audio, v.mimeType));
+    })));
+    $$('#inbox-list [data-delvoice]').forEach(b => b.addEventListener('click', () => {
+      if (!confirm('このボイスメッセージを削除しますか？ リアクションは残ります。')) return;
+      busy(b, async () => {
+        const r = await call('deleteVoiceMessage', { reactionId: b.dataset.delvoice });
+        toast(r.message);
+        loadInbox();
+      });
+    }));
   } catch (e) { handleError(e); }
 }
 

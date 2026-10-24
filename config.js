@@ -4,7 +4,7 @@
  */
 window.APP_CONFIG = {
   APP_NAME: 'こえいろマップ～マッチングサイト',
-  VERSION: 'v1.1.3-beta',
+  VERSION: 'v1.2.0-beta',
 
   // GAS Webアプリの URL（デプロイ → ウェブアプリ のURL。末尾は /exec）
   GAS_URL: 'https://script.google.com/macros/s/AKfycbxOIQTyUYkIOZu7LqfUeMjJKEQp6uIhjex-b6IqnxoysEi5MtzODnxI_x4c8DGMY7mr/exec',
@@ -15,6 +15,7 @@ window.APP_CONFIG = {
   // 録音の上限（秒）
   READING_MAX_SEC: 30,
   INTRO_MAX_SEC: 10,
+  VOICE_MSG_MAX_SEC: 20,
 
   // 「近い人」「真逆の人」フィルターで光らせる人数
   MATCH_COUNT: 8,

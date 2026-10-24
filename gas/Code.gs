@@ -11,11 +11,12 @@
  *   FOLDER_READINGS_ID    : setup() が自動設定（音読データ）
  *   FOLDER_INTROS_ID      : setup() が自動設定（ひとことボイス）
  *   FOLDER_TTS_ID         : setup() が自動設定（TTSキャッシュ）
+ *   FOLDER_VOICEMSG_ID    : setup() が自動設定（ボイスメッセージ）
  *   APP_NAME              : メール件名などに使うサイト名（既定 こえいろマップ～マッチングサイト）
  *   APP_URL               : メール本文に載せる公開URL
  */
 
-const APP_VERSION = 'v1.1.2-beta';
+const APP_VERSION = 'v1.2.0-beta';
 const DEFAULT_APP_NAME = 'こえいろマップ～マッチングサイト';
 const TTS_PROMPT_VER = 'v2'; // 読み上げ指示を変えたら更新（古いキャッシュを使わない）
 const PROPS = PropertiesService.getScriptProperties();
@@ -25,6 +26,7 @@ const MAX_FAIL = 5;
 const LOCK_MINUTES = 15;
 const MAX_READING_B64 = 8 * 1024 * 1024;   // 約6MB（16kHz WAVで3分強）
 const MAX_INTRO_B64 = 2 * 1024 * 1024;     // 約1.5MB
+const MAX_VOICEMSG_B64 = 1.5 * 1024 * 1024; // 16kHz WAVで約30秒（画面側は20秒まで）
 const REACTION_TYPES = ['talk', 'voice', 'dialect', 'smile'];
 // 利用上の注意の版。文面を変えたら更新すると、全員に再同意を求めます（index.html の data-terms と合わせる）
 const TERMS_VERSION = '2026-10-25';
@@ -51,7 +53,7 @@ const SHEET_DEFS = {
   Users: ['userId', 'email', 'nickname', 'passHash', 'salt', 'mustChange', 'failCount', 'lockedUntil', 'status', 'createdAt', 'lastLoginAt', 'termsVersion', 'termsAgreedAt'],
   Sessions: ['token', 'userId', 'expiresAt', 'createdAt'],
   Profiles: ['userId', 'toneScore', 'dialectScore', 'tempoScore', 'detectedDialect', 'regionKey', 'badge', 'summary', 'tags', 'bio', 'readingFileId', 'introFileId', 'promptId', 'diagnosedAt', 'updatedAt'],
-  Reactions: ['reactionId', 'fromUserId', 'toUserId', 'type', 'message', 'createdAt', 'readAt'],
+  Reactions: ['reactionId', 'fromUserId', 'toUserId', 'type', 'message', 'createdAt', 'readAt', 'voiceFileId'],
   Contacts: ['userId', 'links', 'updatedAt'],
   Approvals: ['fromUserId', 'toUserId', 'createdAt', 'revokedAt']
 };
@@ -114,6 +116,8 @@ const HANDLERS = {
   listProfiles: listProfiles_,
   sendReaction: sendReaction_,
   getInbox: getInbox_,
+  getVoiceMessage: getVoiceMessage_,
+  deleteVoiceMessage: deleteVoiceMessage_,
   agreeTerms: agreeTerms_,
   getMyContacts: getMyContacts_,
   saveContacts: saveContacts_,
@@ -527,20 +531,54 @@ function sendReaction_(req) {
   if (to === me.userId) throw appErr_('自分にはリアクションできません。');
   const target = readAll_('Users').find(u => u.userId === to && u.status === 'active');
   if (!target) throw appErr_('相手が見つかりません。');
+  const audio = String(req.audio || '');
+  if (audio && audio.length > MAX_VOICEMSG_B64) throw appErr_('ボイスメッセージは20秒以内で録音してください。');
+  if (audio && !prop_('FOLDER_VOICEMSG_ID')) throw appErr_('サーバーの設定が古いままです。管理者は setup() をもう一度実行してください。');
 
   return withLock_(() => {
     const dayAgo = Date.now() - 24 * 3600 * 1000;
     const rows = readAll_('Reactions');
     const dup = rows.some(r => r.fromUserId === me.userId && r.toUserId === to && r.type === type && new Date(r.createdAt).getTime() > dayAgo);
     if (dup) throw appErr_('このリアクションは24時間以内に送っています。また明日どうぞ。');
+    const reactionId = 'r_' + Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+    let voiceFileId = '';
+    if (audio) {
+      const folder = DriveApp.getFolderById(prop_('FOLDER_VOICEMSG_ID'));
+      voiceFileId = folder.createFile(Utilities.newBlob(Utilities.base64Decode(audio), 'audio/wav', 'vmsg_' + reactionId + '.wav')).getId();
+    }
     appendRow_('Reactions', {
-      reactionId: 'r_' + Utilities.getUuid().replace(/-/g, '').slice(0, 16),
+      reactionId: reactionId,
       fromUserId: me.userId, toUserId: to, type: type, message: message,
-      createdAt: new Date().toISOString(), readAt: ''
+      createdAt: new Date().toISOString(), readAt: '', voiceFileId: voiceFileId
     });
     const matched = type === 'talk' && rows.some(r => r.fromUserId === to && r.toUserId === me.userId && r.type === 'talk');
-    return { message: matched ? 'おたがいに「話したい」になりました！' : 'リアクションを送りました。', matched: matched };
+    const base = audio ? 'ボイスメッセージを送りました。' : 'リアクションを送りました。';
+    return { message: matched ? 'おたがいに「お話ししたい」になりました！ 「つながる」画面で連絡先を交換できます。' : base, matched: matched };
   });
+}
+
+/** ボイスメッセージの再生（送った本人と受け取った相手だけ） */
+function getVoiceMessage_(req) {
+  const me = auth_(req.token);
+  const r = readAll_('Reactions').find(x => x.reactionId === String(req.reactionId || ''));
+  if (!r || (r.toUserId !== me.userId && r.fromUserId !== me.userId)) throw appErr_('このボイスメッセージは聞けません。');
+  if (!r.voiceFileId) throw appErr_('このボイスメッセージは削除されています。');
+  const blob = DriveApp.getFileById(r.voiceFileId).getBlob();
+  return { audio: Utilities.base64Encode(blob.getBytes()), mimeType: 'audio/wav' };
+}
+
+/** 受け取ったボイスメッセージの削除（リアクションとマッチ状態は残す） */
+function deleteVoiceMessage_(req) {
+  const me = auth_(req.token);
+  withLock_(() => {
+    const r = readAll_('Reactions').find(x => x.reactionId === String(req.reactionId || ''));
+    if (!r || (r.toUserId !== me.userId && r.fromUserId !== me.userId)) throw appErr_('このボイスメッセージは削除できません。');
+    if (r.voiceFileId) {
+      trashFile_(r.voiceFileId);
+      updateRow_('Reactions', r._row, { voiceFileId: '' });
+    }
+  });
+  return { message: 'ボイスメッセージを削除しました。' };
 }
 
 function getInbox_(req) {
@@ -556,7 +594,7 @@ function getInbox_(req) {
     .slice(0, 100)
     .map(r => ({
       reactionId: r.reactionId, fromUserId: r.fromUserId, type: r.type, message: r.message,
-      createdAt: r.createdAt, unread: !r.readAt,
+      createdAt: r.createdAt, unread: !r.readAt, hasVoice: !!r.voiceFileId,
       fromNickname: users[r.fromUserId] ? users[r.fromUserId].nickname : '退会したユーザー',
       fromBadge: profs[r.fromUserId] ? profs[r.fromUserId].badge : ''
     }));
@@ -749,6 +787,7 @@ function setup() {
   PROPS.setProperty('FOLDER_READINGS_ID', getOrCreateFolder_(root, 'readings').getId());
   PROPS.setProperty('FOLDER_INTROS_ID', getOrCreateFolder_(root, 'intros').getId());
   PROPS.setProperty('FOLDER_TTS_ID', getOrCreateFolder_(root, 'tts_cache').getId());
+  PROPS.setProperty('FOLDER_VOICEMSG_ID', getOrCreateFolder_(root, 'voice_messages').getId());
   const curName = prop_('APP_NAME');
   if (!curName || curName === 'こえいろマップ') PROPS.setProperty('APP_NAME', DEFAULT_APP_NAME);
 

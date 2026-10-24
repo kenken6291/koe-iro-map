@@ -4,7 +4,7 @@
  */
 window.APP_CONFIG = {
   APP_NAME: 'こえいろマップ～マッチングサイト',
-  VERSION: 'v1.1.1-beta',
+  VERSION: 'v1.1.2-beta',
 
   // GAS Webアプリの URL（デプロイ → ウェブアプリ のURL。末尾は /exec）
   GAS_URL: 'https://script.google.com/macros/s/AKfycbxOIQTyUYkIOZu7LqfUeMjJKEQp6uIhjex-b6IqnxoysEi5MtzODnxI_x4c8DGMY7mr/exec',

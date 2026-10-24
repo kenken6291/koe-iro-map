@@ -262,6 +262,9 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 0
 .empty { color: var(--ink-soft); padding: 24px 0; }
 
 /* ---------- つながる ---------- */
+.connect-status { margin: 0 0 12px; font-weight: 700; color: var(--ink-soft); }
+.connect-status:empty { display: none; }
+.connect-status.is-error { color: var(--beni); }
 .terms-panel h3, .panel-title { margin: 0 0 4px; font-size: 1.1rem; }
 .terms-box {
   margin: 14px 0; max-height: 46vh; overflow: auto; padding: 14px 18px;

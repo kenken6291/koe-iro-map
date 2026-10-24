@@ -15,7 +15,7 @@
  *   APP_URL               : メール本文に載せる公開URL
  */
 
-const APP_VERSION = 'v1.1.1-beta';
+const APP_VERSION = 'v1.1.2-beta';
 const DEFAULT_APP_NAME = 'こえいろマップ～マッチングサイト';
 const TTS_PROMPT_VER = 'v2'; // 読み上げ指示を変えたら更新（古いキャッシュを使わない）
 const PROPS = PropertiesService.getScriptProperties();
@@ -240,12 +240,25 @@ function agreeTerms_(req) {
   if (req.version !== TERMS_VERSION) throw appErr_('利用上の注意が更新されています。画面を再読み込みしてから、もう一度お読みください。');
   const c = req.checks || {};
   if (!TERMS_CHECKS.every(k => c[k] === true)) throw appErr_('すべての項目にチェックしてください。');
-  withLock_(() => updateRow_('Users', user._row, { termsVersion: TERMS_VERSION, termsAgreedAt: new Date().toISOString() }));
+  withLock_(() => updateRow_('Users', user._row, { termsVersion: "'" + TERMS_VERSION, termsAgreedAt: new Date().toISOString() }));
   return { message: '同意を記録しました。', termsAgreed: true };
 }
 
+/**
+ * 同意した版が最新か判定する。
+ * スプレッドシートは「2026-10-25」を日付に自動変換するため、
+ * 日付として読まれた値も東京時間の yyyy-MM-dd に戻して比べる。
+ * （新しく書き込むときは先頭に ' を付けて文字列として保存）
+ */
+function termsOk_(v) {
+  if (v === '' || v == null) return false;
+  let s = String(v).replace(/^'/, '').trim();
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) s = Utilities.formatDate(new Date(s), 'Asia/Tokyo', 'yyyy-MM-dd');
+  return s === TERMS_VERSION;
+}
+
 function requireTerms_(user) {
-  if (String(user.termsVersion) !== TERMS_VERSION) throw appErr_('先に、利用上の注意への同意が必要です。', 'TERMS');
+  if (!termsOk_(user.termsVersion)) throw appErr_('先に、利用上の注意への同意が必要です。', 'TERMS');
 }
 
 function getMyContacts_(req) {
@@ -318,12 +331,12 @@ function getConnections_(req) {
   const profs = {};
   readAll_('Profiles').forEach(p => { profs[p.userId] = p; });
   const approvals = approvalSet_();
-  const agreed = String(me.termsVersion) === TERMS_VERSION;
+  const agreed = termsOk_(me.termsVersion);
 
   const list = mutualMatchIds_(me.userId, readAll_('Reactions')).filter(id => users[id]).map(id => {
     const iApproved = !!approvals[me.userId + '>' + id];
     const theyApproved = !!approvals[id + '>' + me.userId];
-    const both = agreed && iApproved && theyApproved && String(users[id].termsVersion) === TERMS_VERSION;
+    const both = agreed && iApproved && theyApproved && termsOk_(users[id].termsVersion);
     return {
       userId: id,
       nickname: users[id].nickname,
@@ -793,7 +806,7 @@ function findProfile_(userId) { return readAll_('Profiles').find(p => p.userId =
 function publicUser_(u) {
   return {
     userId: u.userId, email: u.email, nickname: u.nickname, mustChange: truthy_(u.mustChange),
-    termsAgreed: String(u.termsVersion) === TERMS_VERSION
+    termsAgreed: termsOk_(u.termsVersion)
   };
 }
 

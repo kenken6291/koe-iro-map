@@ -19,7 +19,26 @@ const state = {
   prompt: null,
   readingWav: null,
   introWav: null,
-  ttsCache: new Map()
+  ttsCache: new Map(),
+  termsVersion: '',
+  links: []
+};
+
+// 連絡先の種類（サーバー側 CONTACT_TYPES と同じキー）
+const CONTACT_GROUPS = ['音声SNS', 'ビデオ通話', 'SNS'];
+const CONTACT_TYPES = {
+  standfm: { label: 'stand.fm', group: '音声SNS', kind: 'url', ph: 'https://stand.fm/channels/…' },
+  discord: { label: 'Discord', group: '音声SNS', kind: 'text', ph: 'Discordのユーザー名' },
+  spaces: { label: 'X スペース', group: '音声SNS', kind: 'handle', ph: 'Xのユーザー名（@なし）', url: h => `https://x.com/${h}` },
+  zoom: { label: 'Zoom', group: 'ビデオ通話', kind: 'url', ph: 'https://zoom.us/j/…（個人ミーティングURL）' },
+  meet: { label: 'Google Meet', group: 'ビデオ通話', kind: 'url', ph: 'https://meet.google.com/…' },
+  line: { label: 'LINE', group: 'ビデオ通話', kind: 'text', ph: 'LINE ID' },
+  openchat: { label: 'LINE オープンチャット', group: 'SNS', kind: 'url', ph: 'https://line.me/ti/g2/…' },
+  x: { label: 'X', group: 'SNS', kind: 'handle', ph: 'ユーザー名（@なし）', url: h => `https://x.com/${h}` },
+  instagram: { label: 'Instagram', group: 'SNS', kind: 'handle', ph: 'ユーザー名（@なし）', url: h => `https://www.instagram.com/${h}/` },
+  threads: { label: 'Threads', group: 'SNS', kind: 'handle', ph: 'ユーザー名（@なし）', url: h => `https://www.threads.net/@${h}` },
+  facebook: { label: 'Facebook', group: 'SNS', kind: 'url', ph: 'https://www.facebook.com/…' },
+  other: { label: 'その他（URL）', group: 'SNS', kind: 'url', ph: 'https://…' }
 };
 
 const REACTIONS = {
@@ -53,6 +72,11 @@ async function busy(btn, fn) {
 function handleError(e) {
   if (e && e.code === 'AUTH') { logoutLocal(); toast(e.message, true); return; }
   if (e && e.code === 'MUST_CHANGE') { if (state.user) state.user.mustChange = true; openPassModal(true); return; }
+  if (e && e.code === 'TERMS') {
+    toast(e.message, true);
+    if ($('#screen-connect').hidden) show('connect'); else loadConnect();
+    return;
+  }
   toast((e && e.message) || 'エラーが発生しました。', true);
 }
 
@@ -68,6 +92,7 @@ function show(screen) {
   window.scrollTo(0, 0);
   if (screen === 'map') loadMap();
   if (screen === 'inbox') loadInbox();
+  if (screen === 'connect') loadConnect();
   if (screen === 'mypage') renderMyPage();
 }
 
@@ -617,9 +642,10 @@ async function loadInbox() {
     const r = await call('getInbox');
     setUnread(0);
     $('#matches').innerHTML = r.matches.length
-      ? r.matches.map(m => `<button class="match-pill" data-uid="${esc(m.userId)}" type="button">🤝 ${esc(m.nickname)} さんとおたがいに「お話ししたい」</button>`).join('')
+      ? r.matches.map(m => `<button class="match-pill" type="button">🤝 ${esc(m.nickname)} さんとおたがいに「お話ししたい」</button>`).join('')
       : '';
-    $$('#matches [data-uid]').forEach(b => b.addEventListener('click', () => openUser(b.dataset.uid)));
+    $('#matches-note').hidden = !r.matches.length;
+    $$('#matches .match-pill').forEach(b => b.addEventListener('click', () => show('connect')));
 
     if (!r.received.length) {
       list.innerHTML = '<li class="empty">まだリアクションは届いていません。マップで気になる人にリアクションしてみましょう。</li>';
@@ -645,6 +671,189 @@ async function openUser(uid) {
   const u = state.profiles.find(p => p.userId === uid);
   if (u) openDetail(u);
   else toast('この人はまだマップにいません。', true);
+}
+
+/* =========================================================
+ * つながる（相互マッチ＋相互承認で連絡先交換）
+ * ======================================================= */
+async function loadConnect() {
+  const status = $('#connect-status');
+  status.classList.remove('is-error');
+  status.textContent = '読み込み中…';
+  try {
+    const r = await call('getConnections');
+    status.textContent = '';
+    state.termsVersion = r.termsVersion;
+    if (state.user) state.user.termsAgreed = r.termsAgreed;
+    const panel = $('#terms-panel');
+    $('#form-terms').hidden = r.termsAgreed;
+    panel.hidden = r.termsAgreed;
+    $('#connect-body').hidden = !r.termsAgreed;
+    if (!r.termsAgreed) {
+      $('#form-terms').reset();
+      $('#btn-terms-agree').disabled = true;
+      return;
+    }
+    const mine = await call('getMyContacts');
+    state.links = mine.links || [];
+    renderLinkRows(state.links.length ? state.links : [{ type: 'zoom', value: '', note: '' }]);
+    renderConnections(r.connections);
+  } catch (e) {
+    if (e.code === 'AUTH' || e.code === 'MUST_CHANGE') return handleError(e);
+    status.classList.add('is-error');
+    status.textContent = `読み込めませんでした：${e.message}`;
+  }
+}
+
+function typeOptions(selected) {
+  return CONTACT_GROUPS.map(g => `<optgroup label="${g}">${Object.entries(CONTACT_TYPES)
+    .filter(([, t]) => t.group === g)
+    .map(([k, t]) => `<option value="${k}"${k === selected ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</optgroup>`).join('');
+}
+
+function renderLinkRows(links) {
+  const box = $('#link-rows');
+  box.innerHTML = links.map(l => linkRowHtml(l)).join('');
+  bindLinkRows();
+}
+
+function linkRowHtml(l) {
+  const t = CONTACT_TYPES[l.type] || CONTACT_TYPES.other;
+  return `<div class="link-row">
+    <select aria-label="サービス">${typeOptions(l.type)}</select>
+    <input class="lv" aria-label="URL または ID" maxlength="200" value="${esc(l.value)}" placeholder="${esc(t.ph)}">
+    <input class="ln" aria-label="メモ" maxlength="40" value="${esc(l.note || '')}" placeholder="メモ（例：夜なら話せます）">
+    <button class="remove" type="button" aria-label="この連絡先を削除">×</button>
+  </div>`;
+}
+
+function bindLinkRows() {
+  $$('#link-rows .link-row').forEach(row => {
+    const sel = $('select', row);
+    sel.onchange = () => { $('.lv', row).placeholder = (CONTACT_TYPES[sel.value] || {}).ph || ''; };
+    $('.remove', row).onclick = () => { row.remove(); };
+  });
+}
+
+function collectLinks() {
+  return $$('#link-rows .link-row').map(row => ({
+    type: $('select', row).value,
+    value: $('.lv', row).value.trim(),
+    note: $('.ln', row).value.trim()
+  })).filter(l => l.value);
+}
+
+function linkValueHtml(l) {
+  const t = CONTACT_TYPES[l.type] || CONTACT_TYPES.other;
+  let href = '';
+  if (t.kind === 'url' && /^https:\/\//i.test(l.value)) href = l.value;
+  if (t.kind === 'handle' && t.url && /^[A-Za-z0-9_.]+$/.test(l.value)) href = t.url(l.value);
+  const shown = t.kind === 'handle' ? '@' + l.value : l.value;
+  const main = href
+    ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow">${esc(shown)}</a>`
+    : esc(shown);
+  return `<li><span class="svc">${esc(t.label)}</span>
+    <span class="val">${main}${l.note ? `<br><span class="note">${esc(l.note)}</span>` : ''}</span>
+    <button class="copy-btn" type="button" data-copy="${esc(l.value)}">コピー</button></li>`;
+}
+
+function renderConnections(list) {
+  const ul = $('#connection-list');
+  if (!list.length) {
+    ul.innerHTML = '<li class="empty">まだマッチした人はいません。マップで気になる人に「お話ししたい」を送ってみましょう。</li>';
+    return;
+  }
+  ul.innerHTML = list.map(c => {
+    let status, action;
+    if (c.links) {
+      status = '相互承認済みです。下の連絡先から話しかけてみましょう。';
+      action = `<button class="btn btn-ghost" data-revoke="${esc(c.userId)}" type="button">承認を取り消す</button>`;
+    } else if (c.iApproved && c.theyApproved) {
+      status = '相手の同意の更新を待っています。';
+      action = `<button class="btn btn-ghost" data-revoke="${esc(c.userId)}" type="button">承認を取り消す</button>`;
+    } else if (c.iApproved) {
+      status = '承認しました。相手の承認を待っています。';
+      action = `<button class="btn btn-ghost" data-revoke="${esc(c.userId)}" type="button">承認を取り消す</button>`;
+    } else if (c.theyApproved) {
+      status = '相手が承認しました。あなたも承認すると、おたがいの連絡先が表示されます。';
+      action = `<button class="btn btn-primary" data-approve="${esc(c.userId)}" data-name="${esc(c.nickname)}" type="button">承認する</button>`;
+    } else {
+      status = 'まだどちらも承認していません。';
+      action = `<button class="btn btn-primary" data-approve="${esc(c.userId)}" data-name="${esc(c.nickname)}" type="button">承認する</button>`;
+    }
+    const links = c.links
+      ? (c.links.length ? `<ul class="conn-links">${c.links.map(linkValueHtml).join('')}</ul>` : '<p class="note">相手はまだ連絡先を登録していません。</p>')
+      : '';
+    return `<li class="${c.links ? 'is-open' : ''}">
+      <span class="conn-name">${esc(c.nickname)}</span> <span class="conn-badge">${esc(c.badge)}</span>
+      <p class="conn-status">${status}</p>${links}
+      <div class="row">${action}<button class="btn btn-ghost" data-profile="${esc(c.userId)}" type="button">プロフィールを見る</button></div>
+    </li>`;
+  }).join('');
+
+  $$('[data-approve]', ul).forEach(b => b.addEventListener('click', () => {
+    if (!collectLinks().length && !state.links.length) return toast('先に、あなたの連絡先を登録して保存してください。', true);
+    if (!confirm(`${b.dataset.name} さんを承認します。相手も承認すると、あなたが登録した連絡先が相手に表示されます。よろしいですか？`)) return;
+    busy(b, async () => {
+      const r = await call('approveContact', { toUserId: b.dataset.approve });
+      toast(r.message);
+      loadConnect();
+    });
+  }));
+  $$('[data-revoke]', ul).forEach(b => b.addEventListener('click', () => {
+    if (!confirm('承認を取り消しますか？ 相手からあなたの連絡先が見えなくなります。')) return;
+    busy(b, async () => {
+      const r = await call('revokeContact', { toUserId: b.dataset.revoke });
+      toast(r.message);
+      loadConnect();
+    });
+  }));
+  $$('[data-profile]', ul).forEach(b => b.addEventListener('click', () => openUser(b.dataset.profile)));
+  $$('[data-copy]', ul).forEach(b => b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(b.dataset.copy); toast('コピーしました。'); }
+    catch (e) { toast('コピーできませんでした。長押しで選択してください。', true); }
+  }));
+}
+
+function setupConnect() {
+  const form = $('#form-terms');
+  const boxes = $$('input[type=checkbox]', form);
+  boxes.forEach(cb => cb.addEventListener('change', () => {
+    $('#btn-terms-agree').disabled = !boxes.every(x => x.checked);
+  }));
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    if (!boxes.every(x => x.checked)) return toast('すべての項目にチェックしてください。', true);
+    const checks = Object.fromEntries(boxes.map(x => [x.name, x.checked]));
+    busy(submitBtn(e), async () => {
+      const r = await call('agreeTerms', { version: state.termsVersion, checks });
+      toast(r.message);
+      await loadConnect();
+    });
+  });
+
+  if (CFG.OPERATOR_CONTACT) {
+    const p = $('#operator-contact');
+    p.textContent = `迷惑行為や規約違反の報告：${CFG.OPERATOR_CONTACT}`;
+    p.hidden = false;
+  }
+
+  $('#btn-add-link').addEventListener('click', () => {
+    if ($$('#link-rows .link-row').length >= 8) return toast('連絡先は8件までです。', true);
+    $('#link-rows').insertAdjacentHTML('beforeend', linkRowHtml({ type: 'zoom', value: '', note: '' }));
+    bindLinkRows();
+  });
+  $('#btn-save-links').addEventListener('click', e => busy(e.currentTarget, async () => {
+    const r = await call('saveContacts', { links: collectLinks() });
+    state.links = r.links;
+    renderLinkRows(r.links.length ? r.links : [{ type: 'zoom', value: '', note: '' }]);
+    toast(r.message);
+  }));
+  $('#btn-show-terms').addEventListener('click', () => {
+    const panel = $('#terms-panel');
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 }
 
 /* =========================================================
@@ -726,6 +935,7 @@ async function boot() {
   setupMyPage();
   setupNav();
   setupHelp();
+  setupConnect();
 
   if (!session.token) { show('auth'); return; }
   try {

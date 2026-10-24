@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>こえいろマップ｜話し方で見つかる、波長の合う人</title>
+  <title>こえいろマップ～マッチングサイト｜話し方で見つかる、波長の合う人</title>
   <meta name="description" content="お題を音読するだけで、あなたの話し方をAIが診断。テンション・方言・テンポのマップから、波長の合う人を見つけてお話ししよう。">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗾</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,11 +17,12 @@
   <div class="bg-veil" aria-hidden="true"></div>
 
   <header class="site-header">
-    <a class="logo" href="#" data-go="map">こえいろ<span>マップ</span></a>
+    <a class="logo" href="#" data-go="map" aria-label="こえいろマップ～マッチングサイト">こえいろ<span>マップ</span><small>～マッチングサイト</small></a>
     <div class="header-right">
       <nav id="main-nav" class="main-nav" hidden>
         <button data-go="map">マップ</button>
         <button data-go="inbox">リアクション<span id="unread-badge" class="unread" hidden></span></button>
+        <button data-go="connect">つながる</button>
         <button data-go="mypage">マイページ</button>
       </nav>
       <button id="btn-help" class="help-link" type="button">使い方</button>
@@ -158,7 +159,66 @@
     <section id="screen-inbox" class="screen" hidden>
       <h2 class="screen-title">届いたリアクション</h2>
       <div id="matches" class="matches"></div>
+      <p id="matches-note" class="note" hidden>マッチした人とは、「つながる」画面で連絡先を交換できます。</p>
       <ul id="inbox-list" class="inbox-list"></ul>
+    </section>
+
+    <!-- ===== つながる（連絡先交換） ===== -->
+    <section id="screen-connect" class="screen" hidden>
+      <h2 class="screen-title">つながる</h2>
+      <p class="sub">おたがいに「お話ししたい」を送り合い、さらに両方が承認した相手とだけ、音声SNS・ビデオ通話・SNSの連絡先を見せ合えます。</p>
+
+      <div id="terms-panel" class="panel terms-panel" hidden>
+        <h3>連絡先を交換する前に</h3>
+        <p class="note">以下をお読みいただき、すべての項目にチェックしてください。</p>
+        <div class="terms-box" tabindex="0" aria-label="利用上の注意と免責事項">
+          <h4>注意事項</h4>
+          <ul>
+            <li>はじめは音声通話やビデオ通話など、オンラインで交流してください。直接会うのは十分に信頼できてからにし、人の多い場所を選んでください。</li>
+            <li>住所・勤務先・電話番号・金融機関の情報など、くわしい個人情報は教えないでください。</li>
+            <li>お金の貸し借り、物の売り買い、投資・副業・ネットワークビジネス、宗教や政治活動への勧誘は禁止です。</li>
+            <li>18歳未満の方は、連絡先の交換をご利用いただけません。</li>
+            <li>相手が望まない連絡は続けないでください。承認はいつでも取り消せます。取り消すと、相手からあなたの連絡先は見えなくなります。</li>
+            <li>連絡先を交換したあとのやりとりは、LINE・Zoom などそれぞれのサービスの規約に従ってください。</li>
+          </ul>
+          <h4>免責事項</h4>
+          <ul>
+            <li>こえいろマップ～マッチングサイトは、会員どうしが知り合うきっかけを提供するものです。会員の身元、プロフィール、発言の内容を確認・保証するものではありません。</li>
+            <li>交換した連絡先を使った外部サービス上の交流に、運営者は関与しません。</li>
+            <li>会員どうしの交流によって生じたトラブルや損害について、運営者は責任を負いません。ただし、運営者に故意または重大な過失がある場合を除きます。</li>
+            <li>サービスの内容は、予告なく変更・停止することがあります。</li>
+          </ul>
+          <h4>当事者間での解決</h4>
+          <ul>
+            <li>会員どうしのトラブルは、当事者どうしの話し合いで解決してください。</li>
+            <li>身の危険を感じたときは警察（110番、緊急でない相談は #9110）へ、金銭トラブルは消費者ホットライン（188番）へご相談ください。</li>
+          </ul>
+          <p id="operator-contact" class="note" hidden></p>
+        </div>
+        <form id="form-terms" class="checks" novalidate>
+          <label><input type="checkbox" name="notice"> 上の注意事項を読み、守ります</label>
+          <label><input type="checkbox" name="disclaimer"> 免責事項に同意します</label>
+          <label><input type="checkbox" name="parties"> 会員どうしのトラブルは、当事者間で解決することに同意します</label>
+          <label><input type="checkbox" name="selfResponsibility"> 連絡先の交換と、その後の交流は自己責任で行うことに同意します</label>
+          <button id="btn-terms-agree" class="btn btn-primary" type="submit" disabled>同意して進む</button>
+        </form>
+      </div>
+
+      <div id="connect-body" hidden>
+        <div class="panel">
+          <h3 class="panel-title">あなたの連絡先</h3>
+          <p class="note">ここに登録した連絡先は、相互承認した相手にだけ表示されます。使いたいものだけ登録してください。</p>
+          <div id="link-rows" class="link-rows"></div>
+          <div class="row">
+            <button id="btn-add-link" class="btn btn-ghost" type="button">＋ 連絡先を追加</button>
+            <button id="btn-save-links" class="btn btn-primary" type="button">連絡先を保存</button>
+          </div>
+        </div>
+
+        <h3 class="list-title">マッチした人</h3>
+        <ul id="connection-list" class="connection-list"></ul>
+        <p class="note terms-again">同意した内容は <button id="btn-show-terms" class="link-btn" type="button">利用上の注意と免責事項</button> でいつでも確認できます。</p>
+      </div>
     </section>
 
     <!-- ===== 使い方 ===== -->
@@ -192,7 +252,11 @@
         </li>
         <li>
           <h3>リアクションを送る</h3>
-          <p>カードの「お話ししたい」「いい声！」などのボタンで気持ちを送れます。ひとことメッセージも添えられます。同じ相手に同じリアクションは1日1回です。おたがいに「お話ししたい」を送ると、リアクション画面に表示されます。</p>
+          <p>カードの「お話ししたい」「いい声！」などのボタンで気持ちを送れます。ひとことメッセージも添えられます。同じ相手に同じリアクションは1日1回です。おたがいに「お話ししたい」を送ると、マッチになります。</p>
+        </li>
+        <li>
+          <h3>連絡先を交換して話す</h3>
+          <p>「つながる」画面で、利用上の注意と免責事項を読んで同意します。次に、stand.fm・Discord・Zoom・LINE・X などの連絡先を登録し、マッチした人を「承認」します。相手も承認すると、おたがいの連絡先が表示されます。承認はいつでも取り消せます。</p>
         </li>
       </ol>
 
@@ -204,6 +268,8 @@
         <dd>静かな場所で、スマートフォンを口元から20〜30cmほどに近づけて録り直してください。</dd>
         <dt>診断結果を変えたい</dt>
         <dd>マイページの「もう一度診断する」から、何度でもやり直せます。新しい結果に置き換わります。</dd>
+        <dt>マッチした人の連絡先が出ない</dt>
+        <dd>相手もあなたを承認するまでは表示されません。相手が承認を取り消した場合も見えなくなります。</dd>
         <dt>パスワードを忘れた</dt>
         <dd>ログイン画面の「パスワードをお忘れの方」から、仮パスワードを再発行できます。</dd>
         <dt>録音した声はどこまで公開される？</dt>

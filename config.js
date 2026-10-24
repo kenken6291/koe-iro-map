@@ -1,13 +1,16 @@
 /**
- * こえいろマップ 設定ファイル
+ * こえいろマップ～マッチングサイト 設定ファイル
  * 環境を移すときは、このファイルだけ書き換えればOKです。
  */
 window.APP_CONFIG = {
-  APP_NAME: 'こえいろマップ',
-  VERSION: 'v1.0.1-beta',
+  APP_NAME: 'こえいろマップ～マッチングサイト',
+  VERSION: 'v1.1.1-beta',
 
   // GAS Webアプリの URL（デプロイ → ウェブアプリ のURL。末尾は /exec）
   GAS_URL: 'https://script.google.com/macros/s/AKfycbxOIQTyUYkIOZu7LqfUeMjJKEQp6uIhjex-b6IqnxoysEi5MtzODnxI_x4c8DGMY7mr/exec',
+
+  // 運営への連絡先（迷惑行為の報告などに表示。空なら非表示）
+  OPERATOR_CONTACT: '',
 
   // 録音の上限（秒）
   READING_MAX_SEC: 30,

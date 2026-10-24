@@ -1,5 +1,5 @@
 /**
- * こえいろマップ（koe-iro-map）バックエンド
+ * こえいろマップ～マッチングサイト（koe-iro-map）バックエンド
  * Google Apps Script（V8）／ Webアプリとしてデプロイ
  *
  * スクリプトプロパティ（setup() 実行後に GEMINI_API_KEY だけ手動設定）
@@ -11,11 +11,12 @@
  *   FOLDER_READINGS_ID    : setup() が自動設定（音読データ）
  *   FOLDER_INTROS_ID      : setup() が自動設定（ひとことボイス）
  *   FOLDER_TTS_ID         : setup() が自動設定（TTSキャッシュ）
- *   APP_NAME              : メール件名などに使うアプリ名（既定 こえいろマップ）
+ *   APP_NAME              : メール件名などに使うサイト名（既定 こえいろマップ～マッチングサイト）
  *   APP_URL               : メール本文に載せる公開URL
  */
 
-const APP_VERSION = 'v1.0.1-beta';
+const APP_VERSION = 'v1.1.1-beta';
+const DEFAULT_APP_NAME = 'こえいろマップ～マッチングサイト';
 const TTS_PROMPT_VER = 'v2'; // 読み上げ指示を変えたら更新（古いキャッシュを使わない）
 const PROPS = PropertiesService.getScriptProperties();
 const HASH_ROUNDS = 300;
@@ -25,13 +26,34 @@ const LOCK_MINUTES = 15;
 const MAX_READING_B64 = 8 * 1024 * 1024;   // 約6MB（16kHz WAVで3分強）
 const MAX_INTRO_B64 = 2 * 1024 * 1024;     // 約1.5MB
 const REACTION_TYPES = ['talk', 'voice', 'dialect', 'smile'];
+// 利用上の注意の版。文面を変えたら更新すると、全員に再同意を求めます（index.html の data-terms と合わせる）
+const TERMS_VERSION = '2026-10-25';
+const TERMS_CHECKS = ['notice', 'disclaimer', 'parties', 'selfResponsibility'];
+const MAX_LINKS = 8;
+// 連絡先の種類。kind: url＝https:// のURL、handle＝英数字のID、text＝自由なID文字列
+const CONTACT_TYPES = {
+  standfm: { kind: 'url' },
+  discord: { kind: 'text' },
+  spaces: { kind: 'handle' },
+  zoom: { kind: 'url' },
+  meet: { kind: 'url' },
+  line: { kind: 'text' },
+  openchat: { kind: 'url' },
+  x: { kind: 'handle' },
+  instagram: { kind: 'handle' },
+  facebook: { kind: 'url' },
+  threads: { kind: 'handle' },
+  other: { kind: 'url' }
+};
 const REGION_KEYS = ['hokkaido', 'tohoku', 'kanto', 'chubu', 'kansai', 'chugoku', 'shikoku', 'kyushu', 'okinawa', 'standard', 'unknown'];
 
 const SHEET_DEFS = {
-  Users: ['userId', 'email', 'nickname', 'passHash', 'salt', 'mustChange', 'failCount', 'lockedUntil', 'status', 'createdAt', 'lastLoginAt'],
+  Users: ['userId', 'email', 'nickname', 'passHash', 'salt', 'mustChange', 'failCount', 'lockedUntil', 'status', 'createdAt', 'lastLoginAt', 'termsVersion', 'termsAgreedAt'],
   Sessions: ['token', 'userId', 'expiresAt', 'createdAt'],
   Profiles: ['userId', 'toneScore', 'dialectScore', 'tempoScore', 'detectedDialect', 'regionKey', 'badge', 'summary', 'tags', 'bio', 'readingFileId', 'introFileId', 'promptId', 'diagnosedAt', 'updatedAt'],
-  Reactions: ['reactionId', 'fromUserId', 'toUserId', 'type', 'message', 'createdAt', 'readAt']
+  Reactions: ['reactionId', 'fromUserId', 'toUserId', 'type', 'message', 'createdAt', 'readAt'],
+  Contacts: ['userId', 'links', 'updatedAt'],
+  Approvals: ['fromUserId', 'toUserId', 'createdAt', 'revokedAt']
 };
 
 const PROMPTS = [
@@ -53,7 +75,7 @@ const PROMPTS = [
  * エントリポイント
  * ======================================================= */
 function doGet() {
-  return json_({ ok: true, app: prop_('APP_NAME', 'こえいろマップ'), version: APP_VERSION, time: new Date().toISOString() });
+  return json_({ ok: true, app: prop_('APP_NAME', DEFAULT_APP_NAME), version: APP_VERSION, time: new Date().toISOString() });
 }
 
 function doPost(e) {
@@ -91,7 +113,13 @@ const HANDLERS = {
   updateProfile: updateProfile_,
   listProfiles: listProfiles_,
   sendReaction: sendReaction_,
-  getInbox: getInbox_
+  getInbox: getInbox_,
+  agreeTerms: agreeTerms_,
+  getMyContacts: getMyContacts_,
+  saveContacts: saveContacts_,
+  getConnections: getConnections_,
+  approveContact: approveContact_,
+  revokeContact: revokeContact_
 };
 
 /* =========================================================
@@ -202,6 +230,137 @@ function me_(req) {
   const user = auth_(req.token, true);
   const unread = readAll_('Reactions').filter(r => r.toUserId === user.userId && !r.readAt).length;
   return { user: publicUser_(user), profile: profileOut_(findProfile_(user.userId)), unread: unread };
+}
+
+/* =========================================================
+ * 連絡先交換（相互マッチ＋相互承認）
+ * ======================================================= */
+function agreeTerms_(req) {
+  const user = auth_(req.token);
+  if (req.version !== TERMS_VERSION) throw appErr_('利用上の注意が更新されています。画面を再読み込みしてから、もう一度お読みください。');
+  const c = req.checks || {};
+  if (!TERMS_CHECKS.every(k => c[k] === true)) throw appErr_('すべての項目にチェックしてください。');
+  withLock_(() => updateRow_('Users', user._row, { termsVersion: TERMS_VERSION, termsAgreedAt: new Date().toISOString() }));
+  return { message: '同意を記録しました。', termsAgreed: true };
+}
+
+function requireTerms_(user) {
+  if (String(user.termsVersion) !== TERMS_VERSION) throw appErr_('先に、利用上の注意への同意が必要です。', 'TERMS');
+}
+
+function getMyContacts_(req) {
+  const user = auth_(req.token);
+  return { links: readLinks_(user.userId) };
+}
+
+function saveContacts_(req) {
+  const user = auth_(req.token);
+  requireTerms_(user);
+  const links = validateLinks_(req.links);
+  withLock_(() => {
+    const row = readAll_('Contacts').find(r => r.userId === user.userId);
+    const data = { userId: user.userId, links: JSON.stringify(links), updatedAt: new Date().toISOString() };
+    if (row) updateRow_('Contacts', row._row, data);
+    else appendRow_('Contacts', data);
+  });
+  return { message: '連絡先を保存しました。', links: links };
+}
+
+function validateLinks_(input) {
+  if (!Array.isArray(input)) throw appErr_('連絡先の形式が正しくありません。');
+  const out = [];
+  input.forEach(l => {
+    const type = String((l && l.type) || '');
+    let value = clean_(l && l.value, 200);
+    if (!value) return;
+    const def = CONTACT_TYPES[type];
+    if (!def) throw appErr_('連絡先の種類が正しくありません。');
+    if (def.kind === 'url') {
+      if (!/^https:\/\/[^\s"'<>]+$/i.test(value)) throw appErr_('URL は https:// から始まる形で入力してください。');
+    } else if (def.kind === 'handle') {
+      value = value.replace(/^@/, '');
+      if (!/^[A-Za-z0-9_.]{1,40}$/.test(value)) throw appErr_('ID は半角英数字・アンダーバー・ピリオドで入力してください（@ は不要です）。');
+    } else if (value.length > 60) {
+      throw appErr_('ID は60文字以内で入力してください。');
+    }
+    out.push({ type: type, value: value, note: clean_(l && l.note, 40) });
+  });
+  if (out.length > MAX_LINKS) throw appErr_('連絡先は' + MAX_LINKS + '件までです。');
+  return out;
+}
+
+function readLinks_(userId) {
+  const row = readAll_('Contacts').find(r => r.userId === userId);
+  if (!row) return [];
+  try { return JSON.parse(row.links || '[]'); } catch (e) { return []; }
+}
+
+function mutualMatchIds_(userId, reactions) {
+  const sent = {}, got = {};
+  reactions.forEach(r => {
+    if (r.type !== 'talk') return;
+    if (r.fromUserId === userId) sent[r.toUserId] = true;
+    if (r.toUserId === userId) got[r.fromUserId] = true;
+  });
+  return Object.keys(sent).filter(id => got[id]);
+}
+
+function approvalSet_() {
+  const set = {};
+  readAll_('Approvals').forEach(a => { if (!a.revokedAt) set[a.fromUserId + '>' + a.toUserId] = true; });
+  return set;
+}
+
+function getConnections_(req) {
+  const me = auth_(req.token);
+  const users = {};
+  readAll_('Users').forEach(u => { if (u.status === 'active') users[u.userId] = u; });
+  const profs = {};
+  readAll_('Profiles').forEach(p => { profs[p.userId] = p; });
+  const approvals = approvalSet_();
+  const agreed = String(me.termsVersion) === TERMS_VERSION;
+
+  const list = mutualMatchIds_(me.userId, readAll_('Reactions')).filter(id => users[id]).map(id => {
+    const iApproved = !!approvals[me.userId + '>' + id];
+    const theyApproved = !!approvals[id + '>' + me.userId];
+    const both = agreed && iApproved && theyApproved && String(users[id].termsVersion) === TERMS_VERSION;
+    return {
+      userId: id,
+      nickname: users[id].nickname,
+      badge: profs[id] ? profs[id].badge : '',
+      iApproved: iApproved,
+      theyApproved: theyApproved,
+      links: both ? readLinks_(id) : null
+    };
+  });
+  return { termsVersion: TERMS_VERSION, termsAgreed: agreed, connections: list, myLinkCount: readLinks_(me.userId).length };
+}
+
+function approveContact_(req) {
+  const me = auth_(req.token);
+  requireTerms_(me);
+  const to = String(req.toUserId || '');
+  if (mutualMatchIds_(me.userId, readAll_('Reactions')).indexOf(to) < 0) {
+    throw appErr_('おたがいに「お話ししたい」を送り合った相手とだけ、連絡先を交換できます。');
+  }
+  if (!readLinks_(me.userId).length) throw appErr_('先に、あなたの連絡先を1つ以上登録してください。');
+  withLock_(() => {
+    const row = readAll_('Approvals').find(a => a.fromUserId === me.userId && a.toUserId === to);
+    const now = new Date().toISOString();
+    if (row) updateRow_('Approvals', row._row, { createdAt: now, revokedAt: '' });
+    else appendRow_('Approvals', { fromUserId: me.userId, toUserId: to, createdAt: now, revokedAt: '' });
+  });
+  return { message: '承認しました。相手も承認すると、おたがいの連絡先が表示されます。' };
+}
+
+function revokeContact_(req) {
+  const me = auth_(req.token);
+  const to = String(req.toUserId || '');
+  withLock_(() => {
+    const row = readAll_('Approvals').find(a => a.fromUserId === me.userId && a.toUserId === to && !a.revokedAt);
+    if (row) updateRow_('Approvals', row._row, { revokedAt: new Date().toISOString() });
+  });
+  return { message: '承認を取り消しました。相手からあなたの連絡先は見えなくなります。' };
 }
 
 /* =========================================================
@@ -577,7 +736,8 @@ function setup() {
   PROPS.setProperty('FOLDER_READINGS_ID', getOrCreateFolder_(root, 'readings').getId());
   PROPS.setProperty('FOLDER_INTROS_ID', getOrCreateFolder_(root, 'intros').getId());
   PROPS.setProperty('FOLDER_TTS_ID', getOrCreateFolder_(root, 'tts_cache').getId());
-  if (!prop_('APP_NAME')) PROPS.setProperty('APP_NAME', 'こえいろマップ');
+  const curName = prop_('APP_NAME');
+  if (!curName || curName === 'こえいろマップ') PROPS.setProperty('APP_NAME', DEFAULT_APP_NAME);
 
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'cleanupSessions').forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('cleanupSessions').timeBased().everyDays(1).atHour(4).create();
@@ -631,7 +791,10 @@ function findUserByEmail_(email) { return readAll_('Users').find(u => normEmail_
 function findProfile_(userId) { return readAll_('Profiles').find(p => p.userId === userId) || null; }
 
 function publicUser_(u) {
-  return { userId: u.userId, email: u.email, nickname: u.nickname, mustChange: truthy_(u.mustChange) };
+  return {
+    userId: u.userId, email: u.email, nickname: u.nickname, mustChange: truthy_(u.mustChange),
+    termsAgreed: String(u.termsVersion) === TERMS_VERSION
+  };
 }
 
 function profileOut_(p) {
@@ -663,7 +826,7 @@ function withLock_(fn) {
 function trashFile_(id) { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) { /* 既に無い */ } }
 
 function sendMail_(to, subject, body) {
-  const app = prop_('APP_NAME', 'こえいろマップ');
+  const app = prop_('APP_NAME', DEFAULT_APP_NAME);
   const url = prop_('APP_URL', '');
   MailApp.sendEmail({ to: to, subject: '【' + app + '】' + subject, body: body + (url ? '\n\n' + url : '') + '\n\n――\n' + app });
 }

@@ -1,4 +1,4 @@
-# こえいろマップ（koe-iro-map） v1.0.0-beta
+# こえいろマップ～マッチングサイト（koe-iro-map） v1.1.1-beta
 
 お題文を音読すると、Gemini が「テンション／方言の濃さ／テンポ」の3軸で話し方を診断し、4象限マップ上で波長の合う人・真逆の人を探して交流できる Web アプリです。
 
@@ -42,6 +42,7 @@ koe-iro-map/
 | failCount / lockedUntil | 5回失敗で15分ロック |
 | status | active / suspended |
 | createdAt / lastLoginAt | ISO日時 |
+| termsVersion / termsAgreedAt | 同意した利用上の注意の版と日時 |
 
 **Sessions**：token / userId / expiresAt（7日）/ createdAt
 
@@ -61,7 +62,20 @@ koe-iro-map/
 | promptId / diagnosedAt / updatedAt | |
 
 **Reactions**：reactionId / fromUserId / toUserId / type（talk・voice・dialect・smile）/ message / createdAt / readAt
-同じ相手に同じリアクションは24時間に1回。双方が「お話ししたい」を送るとマッチ表示。
+同じ相手に同じリアクションは24時間に1回。双方が「お話ししたい」を送るとマッチ。
+
+**Contacts**（連絡先）：userId / links（JSON配列 `{type, value, note}`、8件まで）/ updatedAt
+
+**Approvals**（連絡先公開の承認）：fromUserId / toUserId / createdAt / revokedAt
+連絡先が表示される条件は、①相互マッチ、②双方が利用上の注意に同意（最新版）、③双方が承認（取り消していない）、のすべてを満たすこと。サーバー側で判定するので、条件を満たさない相手の連絡先はブラウザに送られません。
+
+### 既存環境を v1.1.0 に上げるとき
+
+Code.gs を差し替えたあと、もう一度 `setup()` を実行してください。Users に2列が追加され、Contacts・Approvals シートが作られます（既存データは消えません）。
+
+### 利用上の注意を変えるとき
+
+index.html の「連絡先を交換する前に」の文面を直したら、Code.gs の `TERMS_VERSION` を新しい日付に変えて再デプロイします。全員に再同意が求められ、再同意するまで連絡先は表示されません。迷惑行為の報告先は config.js の `OPERATOR_CONTACT` に設定すると表示されます。
 
 ## 3. GAS のセットアップ
 
@@ -119,6 +133,10 @@ koe-iro-map/
 | uploadIntro / deleteIntro / getVoice | ひとことボイスの公開・削除・再生 |
 | updateProfile / listProfiles | プロフィール更新／マップ用一覧 |
 | sendReaction / getInbox | リアクション送信／受信一覧とマッチ |
+| agreeTerms | 利用上の注意・免責事項への同意を記録 |
+| getMyContacts / saveContacts | 自分の連絡先の取得・保存 |
+| getConnections | マッチ一覧と承認状況（相互承認済みの相手だけ連絡先つき） |
+| approveContact / revokeContact | 連絡先公開の承認／取り消し |
 
 ## 8. 運用メモ
 

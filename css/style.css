@@ -71,6 +71,7 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .logo { font-family: var(--display); font-size: 1.25rem; color: var(--ink); text-decoration: none; letter-spacing: .02em; }
 .logo span { color: var(--beni); }
+.logo small { font-family: var(--body); font-weight: 700; font-size: .78rem; color: var(--ink-soft); margin-left: 6px; letter-spacing: 0; }
 .header-right { display: flex; align-items: center; gap: 8px; }
 .main-nav { display: flex; gap: 4px; }
 .help-link {
@@ -260,6 +261,43 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 0
 .inbox-list .msg { margin: 6px 0 0; }
 .empty { color: var(--ink-soft); padding: 24px 0; }
 
+/* ---------- つながる ---------- */
+.terms-panel h3, .panel-title { margin: 0 0 4px; font-size: 1.1rem; }
+.terms-box {
+  margin: 14px 0; max-height: 46vh; overflow: auto; padding: 14px 18px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); font-size: .93rem;
+}
+.terms-box h4 { margin: 12px 0 4px; font-size: 1rem; }
+.terms-box h4:first-child { margin-top: 0; }
+.terms-box ul { margin: 0; padding-left: 1.2em; }
+.terms-box li { margin: 4px 0; }
+.checks { display: grid; gap: 10px; }
+.checks label { display: flex; gap: 10px; align-items: flex-start; font-weight: 500; cursor: pointer; }
+.checks input[type=checkbox] { width: 22px; height: 22px; margin-top: 3px; flex: none; accent-color: var(--indigo); }
+.checks .btn { margin-top: 6px; justify-self: start; }
+
+.link-rows { display: grid; gap: 10px; margin-top: 14px; }
+.link-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 140px auto; gap: 8px; align-items: center; }
+.link-row select, .link-row input {
+  width: 100%; padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface-2);
+}
+.link-row .remove { width: 40px; height: 40px; border: 0; background: none; font-size: 1.3rem; color: var(--ink-soft); cursor: pointer; }
+.list-title { margin: 28px 0 10px; font-size: 1.1rem; }
+.connection-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; max-width: 760px; }
+.connection-list > li { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; }
+.connection-list > li.is-open { border: 2px solid var(--wakatake); }
+.conn-name { font-weight: 700; font-size: 1.05rem; }
+.conn-badge { font-size: .85rem; color: var(--ink-soft); }
+.conn-status { margin: 8px 0; font-size: .92rem; }
+.conn-links { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+.conn-links li { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--surface-2); }
+.conn-links .svc { font-weight: 700; font-size: .88rem; }
+.conn-links .val { overflow-wrap: anywhere; }
+.conn-links .val a { color: var(--indigo); font-weight: 700; }
+.copy-btn { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 10px; font-size: .8rem; cursor: pointer; }
+.terms-again { margin-top: 20px; }
+.terms-again .link-btn { display: inline; padding: 0; }
+
 /* ---------- 使い方 ---------- */
 .howto { list-style: none; counter-reset: step; padding: 0; margin: 8px 0 32px; display: grid; gap: 0; max-width: 680px; }
 .howto li { counter-increment: step; position: relative; padding: 0 0 22px 60px; border-left: 2px dashed var(--line); margin-left: 19px; }
@@ -300,13 +338,20 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 0
 /* ---------- レスポンシブ ---------- */
 @media (max-width: 860px) {
   #screen-auth:not([hidden]) { grid-template-columns: 1fr; min-height: auto; }
+  .link-row { grid-template-columns: 1fr auto; }
+  .link-row select { grid-column: 1 / 2; }
+  .link-row .remove { grid-row: 1; grid-column: 2; }
+  .link-row input { grid-column: 1 / -1; }
+  .conn-links li { grid-template-columns: 1fr auto; }
+  .conn-links .svc { grid-column: 1 / -1; }
   .map-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
   .main-nav button { padding: 6px 8px; font-size: .85rem; }
   .help-link { padding: 4px 10px; font-size: .85rem; }
   .site-header { flex-wrap: wrap; }
-  .logo { font-size: 1.05rem; }
+  .logo { font-size: 1.05rem; line-height: 1.2; }
+  .logo small { display: block; margin-left: 0; font-size: .7rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }

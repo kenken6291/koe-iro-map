@@ -485,7 +485,7 @@ function renderResult(p) {
 function setupMap() {
   const tabs = $('#map-tabs');
   tabs.innerHTML = MAPS.map((m, i) =>
-    `<button role="tab" class="tab${i === 0 ? ' is-active' : ''}" data-map="${i}" aria-selected="${i === 0}">${esc(m.label)}</button>`).join('');
+    `<button role="tab" class="tab${i === 0 ? ' is-active' : ''}" data-map="${i}" aria-selected="${i === 0}">${m.label.split(' × ').map(esc).map((t, j) => `<span class="nb">${j ? '× ' : ''}${t}</span>`).join(' ')}</button>`).join('');
   tabs.addEventListener('click', e => {
     const b = e.target.closest('[data-map]');
     if (!b) return;

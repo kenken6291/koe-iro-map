@@ -35,7 +35,7 @@ export const REGIONS = {
 };
 
 const NS = 'http://www.w3.org/2000/svg';
-const SIZE = 640, PAD = 56;
+const SIZE = 640, PAD = 56, VIEW_H = 700; // 下側に軸ラベル2段分の余白
 const INNER = SIZE - PAD * 2;
 
 function el(tag, attrs = {}, text) {
@@ -78,7 +78,7 @@ export function renderMap(svg, opts) {
   const { users, me, map, highlight, onHover, onSelect } = opts;
   const ax = AXES[map.x], ay = AXES[map.y];
   svg.innerHTML = '';
-  svg.setAttribute('viewBox', `0 0 ${SIZE} ${SIZE}`);
+  svg.setAttribute('viewBox', `0 0 ${SIZE} ${VIEW_H}`);
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', `${map.label}のマップ`);
 
@@ -99,10 +99,10 @@ export function renderMap(svg, opts) {
   svg.appendChild(el('line', { x1: PAD, y1: mid, x2: PAD + INNER, y2: mid, class: 'axis' }));
   svg.appendChild(el('line', { x1: mid, y1: PAD, x2: mid, y2: PAD + INNER, class: 'axis' }));
 
-  svg.appendChild(el('text', { x: PAD, y: PAD + INNER + 30, class: 'axis-label', 'text-anchor': 'start' }, '← ' + ax.neg));
-  svg.appendChild(el('text', { x: PAD + INNER, y: PAD + INNER + 30, class: 'axis-label', 'text-anchor': 'end' }, ax.pos + ' →'));
-  svg.appendChild(el('text', { x: mid, y: PAD - 22, class: 'axis-label', 'text-anchor': 'middle' }, '↑ ' + ay.pos));
-  svg.appendChild(el('text', { x: mid, y: PAD + INNER + 50, class: 'axis-label', 'text-anchor': 'middle' }, '↓ ' + ay.neg));
+  svg.appendChild(el('text', { x: PAD, y: PAD + INNER + 34, class: 'axis-label', 'text-anchor': 'start' }, '← ' + ax.neg));
+  svg.appendChild(el('text', { x: PAD + INNER, y: PAD + INNER + 34, class: 'axis-label', 'text-anchor': 'end' }, ax.pos + ' →'));
+  svg.appendChild(el('text', { x: mid, y: PAD - 18, class: 'axis-label', 'text-anchor': 'middle' }, '↑ ' + ay.pos));
+  svg.appendChild(el('text', { x: mid, y: PAD + INNER + 76, class: 'axis-label', 'text-anchor': 'middle' }, '↓ ' + ay.neg));
 
   const layer = el('g', { class: 'dots' });
   svg.appendChild(layer);

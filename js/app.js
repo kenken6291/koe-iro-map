@@ -21,8 +21,16 @@ const state = {
   introWav: null,
   ttsCache: new Map(),
   termsVersion: '',
-  links: []
+  links: [],
+  model: '',          // 選択中のGeminiモデル（'' = 自動）
+  defaultModel: ''    // 自動モード時にGASが使うモデル（me で取得）
 };
+
+// Geminiモデルの選択肢（config.js）
+const MODEL_KEY = 'koeiro_gemini_model';
+const MODEL_OPTIONS = Array.isArray(CFG.GEMINI_MODEL_OPTIONS) && CFG.GEMINI_MODEL_OPTIONS.length
+  ? CFG.GEMINI_MODEL_OPTIONS
+  : [{ value: '', label: '自動モード（汎用の最新）' }];
 
 // 連絡先の種類（サーバー側 CONTACT_TYPES と同じキー）
 const CONTACT_GROUPS = ['音声SNS', 'ビデオ通話', 'SNS'];
@@ -215,6 +223,7 @@ function setupAuth() {
       session.token = r.token;
       e.target.reset();
       resetPasswordFields(e.target);
+      setAiInfo(r.ai);
       await afterLogin(r.user, r.profile, 0);
     });
   });
@@ -435,13 +444,15 @@ async function analyze() {
     const r = await call('analyzeVoice', {
       audio: bytesToBase64(state.readingWav),
       mimeType: 'audio/wav',
-      promptId: state.prompt.id
+      promptId: state.prompt.id,
+      model: state.model
     });
     clearInterval(timer);
     stopPlayback();
     state.profile = r.result;
     await playFlight(r.result.regionKey);
     renderResult(r.result);
+    showUsedModel(r);
     setStep('result');
   } catch (e) {
     clearInterval(timer);
@@ -1013,6 +1024,58 @@ function setupMyPage() {
 }
 
 /* =========================================================
+ * AIモデルの選択
+ * ======================================================= */
+function modelLabel(value) {
+  const opt = MODEL_OPTIONS.find(o => o.value === value);
+  return opt ? opt.label : (value || MODEL_OPTIONS[0].label);
+}
+
+function setupModelPicker() {
+  let saved = null;
+  try { saved = localStorage.getItem(MODEL_KEY); } catch (e) { /* 無視 */ }
+  const def = CFG.GEMINI_MODEL || '';
+  state.model = (saved !== null && MODEL_OPTIONS.some(o => o.value === saved)) ? saved : def;
+  const sels = $$('.model-select');
+  sels.forEach(sel => {
+    sel.innerHTML = MODEL_OPTIONS.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+    sel.value = state.model;
+    sel.addEventListener('change', () => {
+      state.model = sel.value;
+      try { localStorage.setItem(MODEL_KEY, state.model); } catch (e) { /* 無視 */ }
+      sels.forEach(s => { s.value = state.model; });
+      renderVersionModel();
+      toast('診断に使うAIモデル：' + modelLabel(state.model));
+    });
+  });
+  renderVersionModel();
+}
+
+function renderVersionModel(used) {
+  const el = $('#ver-model');
+  if (!el) return;
+  if (used) { el.textContent = used; return; }
+  el.textContent = state.model ? modelLabel(state.model)
+    : (state.defaultModel ? '自動（' + state.defaultModel + '）' : modelLabel(''));
+}
+
+function setAiInfo(ai) {
+  if (!ai) return;
+  state.defaultModel = ai.defaultModel || '';
+  renderVersionModel();
+}
+
+function showUsedModel(r) {
+  const el = $('#model-used');
+  if (!el || !r || !r.model) return;
+  el.textContent = r.modelFallback
+    ? `使用モデル：${r.model}（${modelLabel(state.model)} が使えなかったため自動で切替）`
+    : `使用モデル：${r.model}`;
+  el.hidden = false;
+  renderVersionModel(r.model);
+}
+
+/* =========================================================
  * 起動
  * ======================================================= */
 function setupHelp() {
@@ -1047,10 +1110,12 @@ async function boot() {
   setupNav();
   setupHelp();
   setupConnect();
+  setupModelPicker();
 
   if (!session.token) { show('auth'); return; }
   try {
     const r = await call('me');
+    setAiInfo(r.ai);
     await afterLogin(r.user, r.profile, r.unread);
   } catch (e) {
     session.token = '';
